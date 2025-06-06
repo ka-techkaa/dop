@@ -1,0 +1,120 @@
+
+
+cmake_minimum_required(VERSION 3.5...3.25)
+project(Tetris LANGUAGES CXX)
+
+# 1. Настройка версии и метаданных для пакета
+set(PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_NAME "tetris-game")
+set(CPACK_PACKAGE_VENDOR "ka-techkaa")
+set(CPACK_PACKAGE_DESCRIPTION "Classic Tetris Game using SFML")
+set(CPACK_PACKAGE_CONTACT "kate.cherkasina@gmail.com")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "ka-techkaa")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsfml-dev (>= 2.5.1), libc6 (>= 2.27)")
+set(CPACK_GENERATOR "DEB")
+
+# 2. Подключение необходимых модулей
+include(FetchContent)
+include(CPack)
+
+find_package(SFML REQUIRED network audio graphics window system)
+
+# Копирование ресурсов
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/images)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/images DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+    message(STATUS "Ресурсы images скопированы")
+else()
+    message(WARNING "Папка images не найдена!")
+endif()
+
+
+# Главный исполняемый файл
+add_executable(tetris main.cpp)
+target_compile_features(tetris PRIVATE cxx_std_17)
+target_link_libraries(tetris PRIVATE sfml-system sfml-window sfml-graphics sfml-network sfml-audio)
+
+# Сначала пробуем найти SFML в системе
+find_package(SFML ${SFML_VERSION} QUIET COMPONENTS graphics window system audio network)
+
+if(NOT SFML_FOUND)
+    message(STATUS "SFML не найден, пробуем скачать...")
+    
+    # Альтернативные источники для загрузки SFML
+    set(SFML_URL_OPTIONS
+        URL https://www.sfml-dev.org/files/SFML-${SFML_VERSION}-sources.zip
+        URL https://github.com/SFML/SFML/archive/refs/tags/${SFML_VERSION}.zip
+    )
+    
+    FetchContent_Declare(
+        sfml
+        ${SFML_URL_OPTIONS}
+        SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/sfml-src
+        BINARY_DIR ${CMAKE_BINARY_DIR}/_deps/sfml-build
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    
+    # Настройка параметров сборки SFML
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries")
+    set(SFML_BUILD_DOC FALSE CACHE BOOL "Don't build documentation")
+    set(SFML_BUILD_EXAMPLES FALSE CACHE BOOL "Don't build examples")
+    
+    FetchContent_MakeAvailable(sfml)
+    
+    # Установка путей для собранного SFML
+    set(SFML_ROOT ${CMAKE_BINARY_DIR}/_deps/sfml-build)
+    set(SFML_INCLUDE_DIR ${CMAKE_BINARY_DIR}/_deps/sfml-src/include)
+    
+    # Повторная проверка после сборки
+    find_package(SFML ${SFML_VERSION} REQUIRED COMPONENTS graphics window system audio network)
+endif()
+
+# 4. Проверка наличия SFML
+if(NOT SFML_FOUND)
+    message(FATAL_ERROR "SFML не найден и не может быть загружен автоматически")
+endif()
+
+# 5. Копирование ресурсов с проверкой
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/images)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/images DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+    message(STATUS "Ресурсы images скопированы")
+else()
+    message(WARNING "Папка images не найдена!")
+endif()
+
+# 8. Установка в систему
+install(TARGETS tetris 
+    RUNTIME DESTINATION bin
+    BUNDLE DESTINATION bin
+)
+
+# 9. Установка ресурсов
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/images)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/images
+        DESTINATION share/${PROJECT_NAME}
+    )
+endif()
+
+# 10. Дополнительные настройки для Windows
+if(WIN32)
+    # Копирование DLL
+    add_custom_command(TARGET tetris POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:sfml-graphics>"
+        "$<TARGET_FILE:sfml-window>"
+        "$<TARGET_FILE:sfml-system>"
+        "$<TARGET_FILE:sfml-audio>"
+        "$<TARGET_FILE:sfml-network>"
+        "$<TARGET_FILE_DIR:racing>"
+        COMMENT "Копирование DLL SFML"
+    )
+    
+    # Установка DLL при инсталляции
+    install(FILES
+        "$<TARGET_FILE:sfml-graphics>"
+        "$<TARGET_FILE:sfml-window>"
+        "$<TARGET_FILE:sfml-system>"
+        "$<TARGET_FILE:sfml-audio>"
+        "$<TARGET_FILE:sfml-network>"
+        DESTINATION bin
+    )
+endif()
